@@ -1,2 +1,2 @@
 # lodm-js
-load-mesh javascript for three js
+lod-mesh javascript for three js
