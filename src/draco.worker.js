@@ -24,14 +24,13 @@ self.postRequest = function (sig, node, patches) {
 
 self.addEventListener('message', (job) => {
   if (typeof (job.data) === 'string') return;
-  const { node } = job.data;
 
   let size;
-  if (!node.buffer) return;
-  size = node.buffer.byteLength;
-  let buffer;
+  var buffer = job.data.buffer;
+  if (!buffer) return;
+  size = buffer.byteLength;
   const coder = new DracoDecoder();
-  buffer = coder.decode(node.buffer, function (model) {
+  coder.decode(buffer, function (model) {
     self.postMessage({ model, buffer, request: job.data.request });
   });
 });

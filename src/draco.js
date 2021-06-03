@@ -1,9 +1,7 @@
-import draco from './draco_decoder';
 
-DracoDecoder = function (dracoPath, dracoDecoderType) {
+DracoDecoder = function (dracoPath) {
     var t = this;
-    t.dracoDecoderType =
-        (dracoDecoderType !== undefined) ? dracoDecoderType : {};
+    t.dracoDecoderType = {};
     t.dracoSrcPath = (dracoPath !== undefined) ? dracoPath : './';
     if (typeof DracoDecoderModule === 'undefined') {
         t.loadDracoDecoder(this);

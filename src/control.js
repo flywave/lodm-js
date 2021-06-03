@@ -259,7 +259,7 @@ function setupNode(node) {
   let vertices;
   let indices;
 
-  if (!m.decoder4) {
+  if (!m.decoder4 && !m.decoder8) {
     indices = new Uint8Array(node.buffer, nv * m.vsize, nf * m.fsize);
     vertices = new Uint8Array(nv * m.vsize);
     const view = new Uint8Array(node.buffer, 0, nv * m.vsize);
