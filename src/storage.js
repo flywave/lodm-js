@@ -1,7 +1,8 @@
 import config from './config';
-import {readFeature} from './feature';
-import {readMaterial} from './material';
-import {readFloat32, readUint16, readUint32, readUint64, readUint8} from './util';
+import { readFeature } from './feature';
+import { readMaterial } from './material';
+import { readInstance } from './instance'
+import { readFloat32, readUint16, readUint32, readUint64, readUint8 } from './util';
 
 export default class Storage {
   constructor() {
@@ -14,35 +15,35 @@ export default class Storage {
     const mesh = this;
     mesh.url = url;
     mesh.httpRequest(
-        0,
-        config.padding,
-        function() {
-          const view = new DataView(this.response);
-          view.offset = 0;
-          mesh.reqAttempt++;
-          const header = mesh.importHeader(view);
-          if (!header) {
-            console.log('Empty header!');
-            if (mesh.reqAttempt < config.maxReqAttempt)
-              mesh.open(`${mesh.url}?${Math.random()}`);
-            return null;
-          }
-          mesh.reqAttempt = 0;
-          for (const i in header) mesh[i] = header[i];
-          mesh.vertex = mesh.signature.vertex;
-          mesh.face = mesh.signature.face;
-          mesh.renderMode = mesh.face.index ? ['FACE', 'POINT'] : ['POINT'];
-          mesh.compressed = (mesh.signature.flags & (2 | 4));
-          mesh.decoder2 = (mesh.signature.flags & 2);
-          mesh.decoder4 = (mesh.signature.flags & 4);
-          mesh.requestIndex();
-        },
-        () => {
-          console.log('Open request error!');
-        },
-        () => {
-          console.log('Open request abort!');
-        },
+      0,
+      config.padding,
+      function () {
+        const view = new DataView(this.response);
+        view.offset = 0;
+        mesh.reqAttempt++;
+        const header = mesh.importHeader(view);
+        if (!header) {
+          console.log('Empty header!');
+          if (mesh.reqAttempt < config.maxReqAttempt)
+            mesh.open(`${mesh.url}?${Math.random()}`);
+          return null;
+        }
+        mesh.reqAttempt = 0;
+        for (const i in header) mesh[i] = header[i];
+        mesh.vertex = mesh.signature.vertex;
+        mesh.face = mesh.signature.face;
+        mesh.renderMode = mesh.face.index ? ['FACE', 'POINT'] : ['POINT'];
+        mesh.compressed = (mesh.signature.flags & (4 | 8));
+        mesh.decoder4 = (mesh.signature.flags & 4);
+        mesh.decoder8 = (mesh.signature.flags & 8);
+        mesh.requestIndex();
+      },
+      () => {
+        console.log('Open request error!');
+      },
+      () => {
+        console.log('Open request abort!');
+      },
     );
   }
 
@@ -52,7 +53,7 @@ export default class Storage {
     r.open('GET', this.url, true);
     r.responseType = type;
     r.setRequestHeader('Range', `bytes=${start}-${end - 1}`);
-    r.onload = function() {
+    r.onload = function () {
       switch (this.status) {
         case 0:
           // console.log('0 response');
@@ -63,7 +64,7 @@ export default class Storage {
           break;
         case 200:
           break;
-          // console.log('200 response');
+        // console.log('200 response');
       }
     };
     r.onerror = error;
@@ -75,23 +76,25 @@ export default class Storage {
   requestIndex() {
     const mesh = this;
     const end =
-        (config.padding + mesh.nodesCount * config.nodeSize +
-         mesh.patchesCount * config.patchSize +
-         mesh.texturesCount * config.textureSize +
-         mesh.materialsCount * config.materialSize +
-         mesh.featuresCount * config.featureSize);
+      (config.padding + mesh.nodesCount * config.nodeSize +
+        mesh.instanceNodesCount * config.nodeSize +
+        mesh.instancesCount * config.instanceSize +
+        mesh.patchesCount * config.patchSize +
+        mesh.texturesCount * config.textureSize +
+        mesh.materialsCount * config.materialSize +
+        mesh.featuresCount * config.featureSize);
     mesh.httpRequest(
-        config.padding,
-        end,
-        function() {
-          mesh.handleIndex(this.response);
-        },
-        () => {
-          console.log('Index request error!');
-        },
-        () => {
-          console.log('Index request abort!');
-        },
+      config.padding,
+      end,
+      function () {
+        mesh.handleIndex(this.response);
+      },
+      () => {
+        console.log('Index request error!');
+      },
+      () => {
+        console.log('Index request abort!');
+      },
     );
   }
 
@@ -121,7 +124,32 @@ export default class Storage {
     }
     t.sink = n - 1;
 
-    t.patches = new Uint32Array(view.buffer, view.offset, t.patchesCount * 4);
+    const ninst = t.instanceNodesCount;
+
+    t.ninstoffsets = new Uint32Array(ninst);
+    t.ninstvertices = new Uint32Array(ninst);
+    t.ninstfaces = new Uint32Array(ninst);
+    t.ninsterrors = new Float32Array(ninst);
+    t.ninstspheres = new Float32Array(ninst * 5);
+    t.ninstsize = new Float32Array(ninst);
+    t.ninstfirstpatch = new Uint32Array(ninst);
+
+    for (let i = 0; i < ninst; i++) {
+      t.ninstoffsets[i] = config.padding * readUint32(view);
+      t.ninstvertices[i] = readUint16(view);
+      t.ninstfaces[i] = readUint16(view);
+      t.ninsterrors[i] = readFloat32(view);
+      view.offset += 8;
+      for (let k = 0; k < 5; k++) t.ninstspheres[i * 5 + k] = readFloat32(view);
+      t.ninstfirstpatch[i] = readUint32(view);
+    }
+
+    t.instances = new Array(t.instancesCount);
+    for (let i = 0; i < t.instancesCount; i++) {
+      t.instances[i] = readInstance(view);
+    }
+
+    t.patches = new Uint32Array(view.buffer, view.offset, t.patchesCount * 5);
 
     t.nroots = t.nodesCount;
     for (let j = 0; j < t.nroots; j++) {
@@ -133,10 +161,14 @@ export default class Storage {
     view.offset += t.patchesCount * config.patchSize;
 
     t.textures = new Uint32Array(t.texturesCount);
-    t.texref = new Uint32Array(t.texturesCount);
+    t.texmat = new Array(t.texturesCount);
     for (let i = 0; i < t.texturesCount; i++) {
       t.textures[i] = config.padding * readUint32(view);
-      view.offset += 16 * 4;
+      t.texmat[i] = [
+        readFloat32(view), readFloat32(view), readFloat32(view),
+        readFloat32(view), readFloat32(view), readFloat32(view),
+        readFloat32(view), readFloat32(view), readFloat32(view)
+      ]
     }
 
     t.materials = new Array(t.materialsCount);
@@ -144,15 +176,15 @@ export default class Storage {
       t.materials[i] = readMaterial(view);
     }
 
-    t.foffsets = new Uint32Array(t.featuresCount);
+    t.featoffsets = new Uint32Array(t.featuresCount);
     t.features = new Array(t.featuresCount);
     for (let i = 0; i < t.featuresCount; i++) {
-      t.foffsets[i] = config.padding * readUint32(view);
+      t.featoffsets[i] = config.padding * readUint32(view);
       t.features[i] = readFeature(view);
     }
 
     t.vsize = 12 + (t.vertex.normal ? 6 : 0) + (t.vertex.color ? 4 : 0) +
-        (t.vertex.texCoord ? 8 : 0);
+      (t.vertex.texCoord ? 8 : 0);
     t.fsize = 6;
 
     const tmptexsize = new Uint32Array(n - 1);
@@ -167,6 +199,20 @@ export default class Storage {
     }
     for (let i = 0; i < n - 1; i++) {
       t.nsize[i] += 10 * tmptexsize[i] / tmptexcount[i];
+    }
+
+    const tmpinsttexsize = new Uint32Array(ninst - 1);
+    const tmpinsttexcount = new Uint32Array(ninst - 1);
+    for (let i = 0; i < ninst - 1; i++) {
+      for (let p = t.ninstfirstpatch[i]; p != t.ninstfirstpatch[i + 1]; p++) {
+        const tex = t.patches[p * 4 + 2];
+        tmpinsttexsize[i] += t.textures[tex + 1] - t.textures[tex];
+        tmpinsttexcount[i]++;
+      }
+      t.ninstsize[i] = t.vsize * t.ninstvertices[i] + t.fsize * t.ninstfaces[i];
+    }
+    for (let i = 0; i < n - 1; i++) {
+      t.ninstsize[i] += 10 * tmpinsttexsize[i] / tmpinsttexcount[i];
     }
 
     t.status = new Uint8Array(n);
@@ -246,6 +292,8 @@ export default class Storage {
     h.facesCount = readUint64(view);
     h.signature = this.importSignature(view);
     h.nodesCount = readUint32(view);
+    h.instanceNodesCount = readUint32(view);
+    h.instancesCount = readUint32(view);
     h.patchesCount = readUint32(view);
     h.texturesCount = readUint32(view);
     h.materialsCount = readUint32(view);
@@ -254,6 +302,11 @@ export default class Storage {
       center: [readFloat32(view), readFloat32(view), readFloat32(view)],
       radius: readFloat32(view),
     };
+    h.word = [readFloat32(view), readFloat32(view), readFloat32(view), readFloat32(view),
+    readFloat32(view), readFloat32(view), readFloat32(view), readFloat32(view),
+    readFloat32(view), readFloat32(view), readFloat32(view), readFloat32(view),
+    readFloat32(view), readFloat32(view), readFloat32(view), readFloat32(view)];
+    h.tile = [readUint32(view), readUint32(view), readUint32(view)];
     return h;
   }
 }

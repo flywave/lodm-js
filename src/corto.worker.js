@@ -1,4 +1,4 @@
-import Decoder from './decode4';
+import CortoDecoder from './corto.em.js';
 
 self.requests = {};
 self.count = 0;
@@ -7,23 +7,22 @@ self.postRequest = function (node) {
     buffer: node.buffer,
     request: self.count,
     rgba_colors: true,
+    short_index: true,
     short_normals: true,
   });
+  self.buffer = null;
   self.requests[self.count++] = node;
 };
 
 self.addEventListener('message', (job) => {
   if (typeof (job.data) === 'string') return;
 
-  const { buffer } = job.data;
+  var buffer = job.data.buffer;
   if (!buffer) return;
+  if (!CortoDecoder.instance)
+    await CortoDecoder.ready;
 
-  const decoder = new Decoder(buffer);
-
-  if (decoder.attributes.normal && job.data.short_normals) decoder.attributes.normal.type = 3;
-  if (decoder.attributes.color && job.data.rgba_colors) decoder.attributes.color.outcomponents = 4;
-
-  const model = decoder.decode();
+  var model = CortoDecoder.decode(buffer, job.data.short_index, job.data.short_normals, job.data.rgba_colors ? 4 : 3);
 
   self.postMessage({ model, buffer, request: job.data.request });
 });

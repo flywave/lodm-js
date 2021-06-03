@@ -29,8 +29,9 @@ const Debug = {
 const config = {
   padding: 256,
   nodeSize: 44,
-  patchSize: 16,
-  textureSize: 68,
+  instanceSize: 72,
+  patchSize: 20,
+  textureSize: 40,
   materialSize: 52,
   featureSize: 56,
   magic: 0x6D6C7766,

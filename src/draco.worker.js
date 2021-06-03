@@ -1,4 +1,4 @@
-import Decoder from './decode2';
+import { DracoDecoder } from './draco.js';
 
 self.requests = {};
 self.count = 0;
@@ -25,18 +25,13 @@ self.postRequest = function (sig, node, patches) {
 self.addEventListener('message', (job) => {
   if (typeof (job.data) === 'string') return;
   const { node } = job.data;
-  const { signature } = job.data;
-  const { patches } = job.data;
 
   let size;
   if (!node.buffer) return;
   size = node.buffer.byteLength;
   let buffer;
-  for (let i = 0; i < 1; i++) {
-    const coder = new Decoder(signature, node, patches);
-    buffer = coder.decode(node.buffer);
-  }
-  node.buffer = buffer;
-  node.owner = job.owner;
-  self.postMessage(node);
+  const coder = new DracoDecoder();
+  buffer = coder.decode(node.buffer, function (model) {
+    self.postMessage({ model, buffer, request: job.data.request });
+  });
 });

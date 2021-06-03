@@ -1,12 +1,12 @@
 import config from './config';
 import {contexts, getContext} from './context';
-import Decoder2 from './decode2.worker.js';
-import Decoder4 from './decode4.worker.js';
+import Draco from './draco.worker.js';
+import Corto from './corto.worker.js';
 import Renderable from './renderable';
 import Storage from './storage';
 
-let decoder2 = null;
 let decoder4 = null;
+let decoder8 = null;
 
 function startFrame(gl, fps) {
   const c = getContext(gl);
@@ -152,26 +152,8 @@ function loadNodeGeometry(request, context, node) {
 
   if (!m.compressed)
     setupNode(node);
-  else if (m.decoder2) {
-    const sig = {
-      texcoords: m.vertex.texCoord,
-      normals: m.vertex.normal,
-      colors: m.vertex.color,
-      indices: m.face.index,
-    };
-    const patches = [];
-    for (let k = m.nfirstpatch[n]; k < m.nfirstpatch[n + 1]; k++)
-      patches.push(m.patches[k * 4 + 1]);
-    if (!decoder2) decoder2 = new Decoder2();
-
-    decoder2.onmessage = (e) => {
-      const node = decoder2.requests[e.data.request];
-      node.buffer = e.data.buffer;
-      setupNode(node);
-    };
-    decoder2.postRequest(sig, node, patches);
-  } else {
-    if (!decoder4) decoder4 = new Decoder4();
+  else if (m.decoder4) {
+    if (!decoder4) decoder4 = new Corto();
 
     decoder4.onmessage = (e) => {
       const node = decoder4.requests[e.data.request];
@@ -180,6 +162,16 @@ function loadNodeGeometry(request, context, node) {
       setupNode(node);
     };
     decoder4.postRequest(node);
+  } else {
+    if (!decoder8) decoder8 = new Draco();
+
+    decoder8.onmessage = (e) => {
+      const node = decoder8.requests[e.data.request];
+      node.buffer = e.data.buffer;
+      node.model = e.data.model;
+      setupNode(node);
+    };
+    decoder8.postRequest(node);
   }
 }
 
